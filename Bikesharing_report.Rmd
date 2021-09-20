@@ -1,0 +1,289 @@
+---
+title: "**Google Data Analytics Capstone: How Does a Bike-Share Navigate Speedy Success?**"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: cerulean
+    highlight: kate
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load_lib, include=FALSE}
+library(tidyverse)
+library(skimr)
+library(janitor)
+library(lubridate)
+library(dplyr)
+library(ggplot2)
+```
+## Introduction
+### About the company
+
+In 2016, **Cyclistic** launched a successful bike-share oﬀering. Since then, the program has grown to a ﬂeet of 5,824 bicycles that
+are geotracked and locked into a network of 692 stations across Chicago. The bikes can be unlocked from one station and
+returned to any other station in the system anytime.
+
+Until now, Cyclistic’s marketing strategy relied on building general awareness and appealing to broad consumer segments.
+One approach that helped make these things possible was the ﬂexibility of its pricing plans: single-ride passes, full-day passes,
+and annual memberships. Customers who purchase single-ride or full-day passes are referred to as casual riders. Customers
+who purchase annual memberships are Cyclistic members.
+
+Cyclistic’s ﬁnance analysts have concluded that annual members are much more proﬁtable than casual riders. Although the
+pricing ﬂexibility helps Cyclistic attract more customers, Moreno believes that maximizing the number of annual members will
+be key to future growth. Rather than creating a marketing campaign that targets all-new customers, Moreno believes there is a
+very good chance to convert casual riders into members. She notes that casual riders are already aware of the Cyclistic
+program and have chosen Cyclistic for their mobility needs.
+
+Moreno has set a clear goal: Design marketing strategies aimed at converting casual riders into annual members. In order to
+do that, however, the marketing analyst team needs to better understand how annual members and casual riders diﬀer, why
+casual riders would buy a membership, and how digital media could aﬀect their marketing tactics. Moreno and her team are
+interested in analyzing the Cyclistic historical bike trip data to identify trends.
+
+### Scenario
+
+I am a junior data analyst working in the marketing analyst team at Cyclistic, a bike-share company in Chicago. The director
+of marketing believes the company’s future success depends on maximizing the number of annual memberships. Therefore,
+my team wants to understand how casual riders and annual members use Cyclistic bikes diﬀerently. From these insights,
+my team will design a new marketing strategy to convert casual riders into annual members. But ﬁrst, Cyclistic executives
+must approve my recommendations, so they must be backed up with compelling data insights and professional data
+visualizations.
+
+Moreno has assigned me a question to answer: **How do annual members and casual riders use Cyclistic bikes 
+diﬀerently?**
+
+## Analytics
+### 1. Ask
+#### Business task
+Analyze riders' usage from historical data to riding patterns and trends of annual members and casual riders for future marketing membership programs. Based on my insight, Cyclistic can decide whether the firm should launch a marketing campaign to convert casual riders into members and how to do it.
+
+
+### 2. Prepare
+#### Dataset
+I will use [Cyclistic’s historical trip data](https://divvy-tripdata.s3.amazonaws.com/index.html) of annual and casual riders to analyze the difference between casual riders and Cyclistic members, understand their motivations to buy memberships, and identify trends. In this project, I will use R to prepare, process, analyze, and deliver the data from July 2020 to August 2021.
+
+The data is from the company so it is very credible and integrity. It is organized by months, for the purpose of this project, I will combine data from different months to form a new dataset
+
+```{r read, include =FALSE}
+#read the name of all file in the folder
+#file_list <- list.files()
+#read different file 
+#ldf <- lapply(file_list , read.csv)
+#combine them to a single dataset
+#df_comb <- do.call("rbind", ldf)
+#save the combined dataset to a new csv file
+#write.csv(df_comb,'tripdata_202008_202107.csv')
+#read the combined csv file
+df <- read.csv('tripdata_202008_202107.csv')
+#copy to a new df to work on
+df_final <- df
+colnames(df)
+```
+
+### 3. Process
+Convert to correct date format 
+```{r clean_1}
+df_final[, "started_at"] <- lapply("started_at", function(d) lubridate::ymd_hms(df_final[,d]))
+df_final[, "ended_at"] <- lapply("ended_at", function(d) lubridate::ymd_hms(df_final[,d]))
+```
+
+Create trip duration column (in hour)
+```{r clean_2}
+df_final$ride_length <- with(df_final, as.numeric(difftime(ended_at,started_at,units="hours")))
+```
+
+There is likely to be an error, so I remove all rows with trip duration larger than 24 hours.
+
+```{r clean_3}
+df_final <- df_final %>%
+  filter(ride_length <= 24 & ride_length > 0 )
+```
+
+Create month and season column
+```{r clean_4}
+df_final$year <-year(as.Date(df_final$started_at))
+
+df_final$month <-month(as.Date(df_final$started_at))
+
+nm1 <- setNames(rep(c("Winter", "Spring", "Summer", "Fall"),
+                    each = 3), month.name)
+nm2 <- setNames(rep(c("Jan", "Feb", "Mar", "Apr",'May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'),
+                           each = 1), month.name)
+df_final <- df_final %>% 
+  mutate(Season = nm1[month])
+df_final <- df_final %>% 
+  mutate(Month_name = nm2[month])
+```
+
+Filter unnecessary attributes 
+```{r filter}
+trimmed_df <- df_final %>% select('rideable_type','start_station_name',
+         'member_casual','ride_length','year','month','Month_name','Season')
+```
+Verify if the data is clean by using the str() methods
+```{r verify}
+str(trimmed_df)
+```
+
+### 4.Analyze 
+Explore the overall trend of **Cyclistic**'s users over past year.
+The  mean trip duration is 
+```{r mean}
+mean(trimmed_df$ride_length)
+```
+Now, compare the mean trip duration and the total trip duration of casual user and member user
+
+#### By trip duration in general
+```{r viz_1}
+#Calculate the average ride_length for member and casual riders
+#average_ride_length_sumary <- 
+trimmed_df %>%
+  group_by(member_casual) %>%
+  summarise(average_ride_lenth=mean(ride_length),
+            total_ride_lenth=sum(ride_length),
+            number_of_ride= n()) %>%
+  ggplot(aes(x=average_ride_lenth,y=member_casual)) +
+  geom_bar(stat = "identity", width=0.2,position=position_dodge()) +
+  coord_flip()+
+  labs(title="Comparison of Average trip duration by Member type for bikesharing",
+       caption=paste0("Data from: 08/2020 to 07/2021"),
+       x="Average trip duration",
+       y="Member vs Casual users")
+```
+Let's calculate the differences
+```{r cal}
+library(threadr)
+df_temp <- trimmed_df %>%
+  group_by(member_casual) %>% 
+  summarise(total_ride_lenth=sum(ride_length))
+dff = as.numeric(df_temp[1,2]) - as.numeric(df_temp[2,2])
+dff_percent = round((dff / as.numeric(df_temp[2,2]))*100,2)
+print(paste(as.character(dff_percent),"%"))
+
+```
+The graph shows that casual users often ride longer than Cyclistic member riders. Now, compare the total trip duration of casual and annual member users.
+```{r viz_2}
+trimmed_df %>%
+  group_by(member_casual) %>%
+  summarise(average_ride_lenth=mean(ride_length),
+            total_ride_lenth=sum(ride_length),
+            number_of_ride= n()) %>%
+  ggplot(aes(x=total_ride_lenth,y=member_casual)) +
+  geom_bar(stat = "identity", width=0.2,position=position_dodge()) +
+  coord_flip()+
+  labs(title="Comparison of Total of trip duration by Member type for bikesharing",
+       caption=paste0("Data from: 08/2020 to 07/2021"),
+       x="Total of trip duration",
+       y="Member vs Casual users")
+```
+Based on the graph, we can see that member users have greater total trip duration than casual users
+Finally, let's compare the number of rides that member and casual users made past year
+```{r viz_2.2}
+trimmed_df %>%
+  group_by(member_casual) %>%
+  summarise(average_ride_lenth=mean(ride_length),
+            total_ride_lenth=sum(ride_length),
+            number_of_ride= n()) %>%
+  ggplot(aes(x=number_of_ride,y=member_casual)) +
+  geom_bar(stat = "identity", width=0.2,position=position_dodge()) +
+  coord_flip()+
+  labs(title="Comparison of Number of rides by Member type for bikesharing",
+       caption=paste0("Data from: 08/2020 to 07/2021"),
+       x="Number of ride",
+       y="Member vs Casual users")
+```
+Based on three graph, we can see that member users tend to ride more time. However, casual users tend to have longer trip duration and their total h is more than member users.
+
+#### By ride legnth and months/seasons in general
+Moving on, let's explore the overall trend of **Cyclistic** in differetn months as well as season
+```{r viz_3}
+trimmed_df %>%
+  group_by(Month_name) %>%
+  summarise(average_ride_lenth=mean(ride_length),
+            total_ride_lenth=sum(ride_length),
+            number_of_ride= n()) %>%
+  mutate(Month_name = fct_relevel(Month_name, 
+                                  'Jan', 'Feb', 'Mar', 'Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec')) %>%
+  ggplot(aes(x=number_of_ride,y=Month_name)) +
+  geom_bar(stat = "identity", width=0.5,position=position_dodge()) +
+  coord_flip() +
+  labs(title="Comparison of Total trip duration by Season for bikesharing",
+       caption=paste0("Data from: 08/2020 to 07/2021"),
+       x="Total trip duration",
+       y="Number of Bookings")
+```
+
+```{r viz_4, include=FALSE}
+
+# trimmed_df %>%
+#   group_by(Season) %>%
+#   summarise(average_ride_lenth=mean(ride_length),
+#             total_ride_lenth=sum(ride_length),
+#             number_of_ride= n()) %>%
+#   mutate(Season = fct_relevel(Season, 'Spring','Summer','Fall','Winter')) %>%
+#   ggplot(aes(x=number_of_ride,y=Season)) +
+#   geom_bar(stat = "identity", width=0.5,position=position_dodge()) +
+#   coord_flip() +
+#   labs(title="Comparison of Total trip duration by Season and member type for bikesharing",
+#        caption=paste0("Data from: 08/2020 to 07/2021"),
+#        legend="member - casual",
+#        x="Total trip duration",
+#        y="Number of Bookings")
+
+```
+We can see that people ride most from Jun to August. This is reasonable since during that time, it is warmer outside, which is good for recreational activity
+
+#### By ride legnth and months/seasons users type
+Now, compare the total trip duration and the total trip duration of casual user and member user in different months
+```{r viz_5, warning=FALSE}
+trimmed_df %>%
+  group_by(member_casual,Month_name) %>%
+  summarise(average_ride_lenth=mean(ride_length),
+            total_ride_lenth=sum(ride_length),
+            number_of_ride= n()) %>%
+  mutate(Month_name = fct_relevel(Month_name,
+                                  'Jan', 'Feb', 'Mar', 'Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec')) %>%
+  ggplot(aes(x=total_ride_lenth,y=Month_name,fill=member_casual)) +
+  geom_bar(stat = "identity", width=0.5,position=position_dodge()) +
+  coord_flip() +
+  labs(title="Comparison of Total trip duration by month and member type for bikesharing",
+       caption=paste0("Data from: 08/2020 to 07/2021"),
+       legend="member - casual",
+       x="Total trip duration",
+       y="Number of Bookings")
+```
+We can see that, during winter time (from November to January), the total trip duration of casual users is lower than member users'. However, during other seasons, the total trip duration of casual users is higher. 
+
+```{r viz_6, include=FALSE}
+trimmed_df %>%
+  group_by(member_casual,Season) %>%
+  summarise(average_ride_lenth=mean(ride_length),
+            total_ride_lenth=sum(ride_length),
+            number_of_ride= n()) %>%
+  mutate(Season = fct_relevel(Season, 'Spring','Summer','Fall','Winter')) %>%
+  ggplot(aes(x=number_of_ride,y=Season,fill=member_casual)) +
+  geom_bar(stat = "identity", width=0.5,position=position_dodge()) +
+  coord_flip() +
+  labs(title="Comparison of Total trip duration by Season and member type for bikesharing",
+       caption=paste0("Data from: 08/2020 to 07/2021"),
+       legend="member - casual",
+       x="Total trip duration",
+       y="Number of Bookings")
+```
+
+
+### Findings
+Based on the finding above, we came up with two main conclusions:
+
+– The total trip duration for casual users is 69.02% greater than the total trip duration of member users.
+– During the wintertime, the total trip duration of casual users is lower than member users’. However, during other seasons, the total ride length of casual users is higher.
+
+## Summary
+The season affects the total trip duration of casual and member users, especially casual riders. The temperature is lower during the winter, so recreational activity was not favorable. Since casual users do not pay membership fees annually, it’s reasonable to see the total trip duration of casual users lower than member users’ in the cold seasons.
+
+So, suppose the company wants to launch a marketing campaign to convert casual users to member users. In that case, they should do the campaign during July, where the **Cyclistic** bike-sharing program attracts the most casual users. Cyclistic may also want to promote more about the benefits of “Annual Pass” in comparison to “Single Ride” and “Day Pass.”
+
+
